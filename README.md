@@ -1,4 +1,6 @@
-💰 Mr. Budget — Financial Control Dashboard
+💰 Mr. Budget 
+Financial Control Dashboard
+
 Mr. Budget is a modern, responsive fintech web application designed to give users absolute control over their personal finances. Built with a user-centric approach, the platform provides real-time financial tracking, budget planning, and expense management in a single, streamlined interface.
 
 🛠️ Technical Stack
