@@ -59,12 +59,14 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
 
   // Custom User Profile State
-  const [profile, setProfile] = useState<{ displayName: string; photoURL: string }>(() => {
+  const [profile, setProfile] = useState<{ displayName: string; photoURL: string; emailNotifications?: boolean }>(() => {
     const savedName = localStorage.getItem('guest_displayName');
     const savedPhoto = localStorage.getItem('guest_photoURL');
+    const savedEmailNotifs = localStorage.getItem('guest_emailNotifications');
     return {
       displayName: savedName || 'Guest User',
       photoURL: savedPhoto || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
+      emailNotifications: savedEmailNotifs === 'true',
     };
   });
 
@@ -98,7 +100,7 @@ export default function App() {
     }
   };
 
-  const handleSaveProfile = async (updatedProfile: { displayName: string; photoURL: string }) => {
+  const handleSaveProfile = async (updatedProfile: { displayName: string; photoURL: string; emailNotifications: boolean }) => {
     setProfile(updatedProfile);
     if (auth.currentUser) {
       const userId = auth.currentUser.uid;
@@ -107,6 +109,7 @@ export default function App() {
         await setDoc(userRef, { 
           displayName: updatedProfile.displayName, 
           photoURL: updatedProfile.photoURL,
+          emailNotifications: updatedProfile.emailNotifications,
           updatedAt: new Date().toISOString() 
         }, { merge: true });
       } catch (error) {
@@ -115,12 +118,32 @@ export default function App() {
     } else {
       localStorage.setItem('guest_displayName', updatedProfile.displayName);
       localStorage.setItem('guest_photoURL', updatedProfile.photoURL);
+      localStorage.setItem('guest_emailNotifications', String(updatedProfile.emailNotifications));
     }
   };
 
   // Setup real-time listeners and database seeding
   useEffect(() => {
+    let unsubUser: (() => void) | null = null;
+    let unsubTx: (() => void) | null = null;
+    let unsubAcc: (() => void) | null = null;
+    let unsubBudgets: (() => void) | null = null;
+    let unsubGoals: (() => void) | null = null;
+    let unsubBills: (() => void) | null = null;
+
+    const cleanUpSubscriptions = () => {
+      if (unsubUser) { unsubUser(); unsubUser = null; }
+      if (unsubTx) { unsubTx(); unsubTx = null; }
+      if (unsubAcc) { unsubAcc(); unsubAcc = null; }
+      if (unsubBudgets) { unsubBudgets(); unsubBudgets = null; }
+      if (unsubGoals) { unsubGoals(); unsubGoals = null; }
+      if (unsubBills) { unsubBills(); unsubBills = null; }
+    };
+
     const unsubscribeAuth = onAuthStateChanged(auth, async (fbUser) => {
+      // Always clear any previous subscriptions when auth state moves or changes
+      cleanUpSubscriptions();
+
       setCurrentUser(fbUser);
       setAuthLoading(false);
 
@@ -179,34 +202,29 @@ export default function App() {
         }
 
         // Establish reactive content subscriptions
-        const unsubUser = onSnapshot(userDocRef, (snapshot) => {
+        unsubUser = onSnapshot(userDocRef, (snapshot) => {
           if (snapshot.exists()) {
             const data = snapshot.data();
             if (data.selectedCurrencyCode) {
               setSelectedCurrencyCode(data.selectedCurrencyCode);
             }
-            if (data.displayName || data.photoURL) {
-              setProfile({
-                displayName: data.displayName || fbUser.displayName || 'Google User',
-                photoURL: data.photoURL || fbUser.photoURL || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
-              });
-            } else {
-              setProfile({
-                displayName: fbUser.displayName || 'Google User',
-                photoURL: fbUser.photoURL || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
-              });
-            }
+            setProfile({
+              displayName: data.displayName || fbUser.displayName || 'Google User',
+              photoURL: data.photoURL || fbUser.photoURL || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
+              emailNotifications: data.emailNotifications ?? false,
+            });
           } else {
             setProfile({
               displayName: fbUser.displayName || 'Google User',
               photoURL: fbUser.photoURL || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
+              emailNotifications: false,
             });
           }
         }, (error) => {
           handleFirestoreError(error, OperationType.GET, `users/${userId}`);
         });
 
-        const unsubTx = onSnapshot(collection(db, `users/${userId}/transactions`), (snapshot) => {
+        unsubTx = onSnapshot(collection(db, `users/${userId}/transactions`), (snapshot) => {
           const loaded: Transaction[] = [];
           snapshot.forEach((doc) => {
             loaded.push(doc.data() as Transaction);
@@ -217,7 +235,7 @@ export default function App() {
           handleFirestoreError(error, OperationType.GET, `users/${userId}/transactions`);
         });
 
-        const unsubAcc = onSnapshot(collection(db, `users/${userId}/accounts`), (snapshot) => {
+        unsubAcc = onSnapshot(collection(db, `users/${userId}/accounts`), (snapshot) => {
           const loaded: LinkedAccount[] = [];
           snapshot.forEach((doc) => {
             loaded.push(doc.data() as LinkedAccount);
@@ -227,7 +245,7 @@ export default function App() {
           handleFirestoreError(error, OperationType.GET, `users/${userId}/accounts`);
         });
 
-        const unsubBudgets = onSnapshot(collection(db, `users/${userId}/budgets`), (snapshot) => {
+        unsubBudgets = onSnapshot(collection(db, `users/${userId}/budgets`), (snapshot) => {
           const loaded: BudgetCategory[] = [];
           snapshot.forEach((doc) => {
             loaded.push(doc.data() as BudgetCategory);
@@ -237,7 +255,7 @@ export default function App() {
           handleFirestoreError(error, OperationType.GET, `users/${userId}/budgets`);
         });
 
-        const unsubGoals = onSnapshot(collection(db, `users/${userId}/goals`), (snapshot) => {
+        unsubGoals = onSnapshot(collection(db, `users/${userId}/goals`), (snapshot) => {
           const loaded: SavingsGoal[] = [];
           snapshot.forEach((doc) => {
             loaded.push(doc.data() as SavingsGoal);
@@ -247,7 +265,7 @@ export default function App() {
           handleFirestoreError(error, OperationType.GET, `users/${userId}/goals`);
         });
 
-        const unsubBills = onSnapshot(collection(db, `users/${userId}/bills`), (snapshot) => {
+        unsubBills = onSnapshot(collection(db, `users/${userId}/bills`), (snapshot) => {
           const loaded: UpcomingBill[] = [];
           snapshot.forEach((doc) => {
             loaded.push(doc.data() as UpcomingBill);
@@ -257,15 +275,6 @@ export default function App() {
         }, (error) => {
           handleFirestoreError(error, OperationType.GET, `users/${userId}/bills`);
         });
-
-        return () => {
-          unsubUser();
-          unsubTx();
-          unsubAcc();
-          unsubBudgets();
-          unsubGoals();
-          unsubBills();
-        };
       } else {
         // Guest mode fallback
         setTransactions(INITIAL_TRANSACTIONS);
@@ -276,11 +285,15 @@ export default function App() {
         setSelectedCurrencyCode('PKR');
         const savedName = localStorage.getItem('guest_displayName') || 'Guest User';
         const savedPhoto = localStorage.getItem('guest_photoURL') || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80';
-        setProfile({ displayName: savedName, photoURL: savedPhoto });
+        const savedEmailNotifs = localStorage.getItem('guest_emailNotifications') === 'true';
+        setProfile({ displayName: savedName, photoURL: savedPhoto, emailNotifications: savedEmailNotifs });
       }
     });
 
-    return () => unsubscribeAuth();
+    return () => {
+      unsubscribeAuth();
+      cleanUpSubscriptions();
+    };
   }, []);
 
   // Layout navigation: 0 = Overview, 1 = Transactions Ledger, 2 = Budget Planner, 3 = Accounts & Goals
@@ -850,47 +863,30 @@ export default function App() {
               <HelpCircle className="w-5 h-5 text-on-surface-variant" />
             </button>
 
-            {/* Quick Settings Shortcut */}
-            <button
-              type="button"
-              onClick={() => setIsSettingsOpen(true)}
-              className="p-2 text-on-surface-variant hover:bg-surface-container-low rounded-full transition-colors cursor-pointer"
-              title="Settings &amp; Profile"
-            >
-              <Settings className="w-5 h-5 text-on-surface-variant" />
-            </button>
-
             {/* Real user or Sign In status on mobile toolbar */}
-            {currentUser ? (
-              <div className="flex items-center gap-2">
-                <span className="hidden leading-none text-right sm:block">
-                  <p className="text-[10px] font-bold text-primary truncate leading-tight max-w-[80px]">
-                    {profile.displayName}
-                  </p>
+            <div className="flex items-center gap-2">
+              <span className="hidden leading-none text-right sm:block">
+                <p className="text-[10px] font-bold text-primary truncate leading-tight max-w-[100px]">
+                  {profile.displayName}
+                </p>
+                {currentUser ? (
                   <p className="text-[8px] text-emerald-600 font-bold tracking-wider uppercase font-mono">Synced</p>
-                </span>
-                <div 
-                  onClick={() => setIsSettingsOpen(true)}
-                  title="App Settings &amp; Profile"
-                  className="h-8 w-8 rounded-full overflow-hidden border border-primary/30 bg-surface-container cursor-pointer hover:border-primary transition-colors object-cover"
-                >
-                  <img 
-                    alt="User Profile" 
-                    className="w-full h-full object-cover select-none"
-                    src={profile.photoURL}
-                  />
-                </div>
-              </div>
-            ) : (
-              <button 
-                type="button"
+                ) : (
+                  <p className="text-[8px] text-on-surface-variant/75 font-bold tracking-wider uppercase font-mono">Offline</p>
+                )}
+              </span>
+              <div 
                 onClick={() => setIsSettingsOpen(true)}
-                className="bg-primary text-white text-[10px] font-black px-2.5 py-1.5 rounded-full flex items-center gap-1.5 hover:opacity-90 transition-all shadow-sm cursor-pointer border border-primary/10"
                 title="App Settings &amp; Profile"
+                className="h-8 w-8 rounded-full overflow-hidden border border-primary/30 bg-surface-container cursor-pointer hover:border-primary hover:scale-105 active:scale-95 transition-all duration-150 object-cover shrink-0"
               >
-                <span>⚙️ Settings</span>
-              </button>
-            )}
+                <img 
+                  alt="User Profile" 
+                  className="w-full h-full object-cover select-none"
+                  src={profile.photoURL}
+                />
+              </div>
+            </div>
           </div>
 
         </header>

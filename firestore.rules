@@ -32,11 +32,17 @@ service cloud.firestore {
       allow get: if isOwner(userId);
       allow create: if isOwner(userId)
                     && incoming().userId == userId
-                    && incoming().selectedCurrencyCode in ['USD', 'EUR', 'PKR', 'BHD'];
+                    && incoming().selectedCurrencyCode in ['USD', 'EUR', 'PKR', 'BHD']
+                    && (!('displayName' in incoming()) || (incoming().displayName is string && incoming().displayName.size() <= 200))
+                    && (!('photoURL' in incoming()) || (incoming().photoURL is string && incoming().photoURL.size() <= 2000))
+                    && (!('emailNotifications' in incoming()) || incoming().emailNotifications is bool);
       allow update: if isOwner(userId)
                     && incoming().userId == userId
                     && incoming().selectedCurrencyCode in ['USD', 'EUR', 'PKR', 'BHD']
-                    && incoming().diff(existing()).affectedKeys().hasOnly(['selectedCurrencyCode', 'updatedAt']);
+                    && (!('displayName' in incoming()) || (incoming().displayName is string && incoming().displayName.size() <= 200))
+                    && (!('photoURL' in incoming()) || (incoming().photoURL is string && incoming().photoURL.size() <= 2000))
+                    && (!('emailNotifications' in incoming()) || incoming().emailNotifications is bool)
+                    && incoming().diff(existing()).affectedKeys().hasOnly(['selectedCurrencyCode', 'updatedAt', 'displayName', 'photoURL', 'emailNotifications']);
     }
 
     // Rules for User's Transactions subcollection

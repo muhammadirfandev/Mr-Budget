@@ -7,6 +7,9 @@
       "properties": {
         "userId": { "type": "string" },
         "selectedCurrencyCode": { "type": "string", "enum": ["USD", "EUR", "PKR", "BHD"] },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "emailNotifications": { "type": "boolean" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["userId", "selectedCurrencyCode"]

@@ -7,9 +7,9 @@ interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   currentUser: any;
-  profile: { displayName: string; photoURL: string };
+  profile: { displayName: string; photoURL: string; emailNotifications?: boolean };
   selectedCurrencyCode: CurrencyCode;
-  onSaveProfile: (updatedProfile: { displayName: string; photoURL: string }) => Promise<void>;
+  onSaveProfile: (updatedProfile: { displayName: string; photoURL: string; emailNotifications: boolean }) => Promise<void>;
   onCurrencyChange: (code: CurrencyCode) => Promise<void>;
   onSignOut: () => Promise<void>;
   onSignIn: () => Promise<void>;
@@ -38,6 +38,7 @@ export default function SettingsModal({
 }: SettingsModalProps) {
   const [displayName, setDisplayName] = useState(profile.displayName);
   const [photoURL, setPhotoURL] = useState(profile.photoURL);
+  const [emailNotifications, setEmailNotifications] = useState(!!profile.emailNotifications);
   const [isSaving, setIsSaving] = useState(false);
   const [showConfirmLogout, setShowConfirmLogout] = useState(false);
   const [useCustomUrl, setUseCustomUrl] = useState(!PRESET_AVATARS.includes(profile.photoURL));
@@ -53,6 +54,7 @@ export default function SettingsModal({
       await onSaveProfile({
         displayName: displayName.trim() || 'User',
         photoURL: finalPhoto,
+        emailNotifications,
       });
       onClose();
     } catch (error) {
@@ -236,6 +238,30 @@ export default function SettingsModal({
                   </option>
                 ))}
               </select>
+            </div>
+
+            {/* Email Notification Preference Toggle */}
+            <div className="flex items-center justify-between p-3 bg-surface-container-lowest rounded-2xl border border-outline-variant/40">
+              <div>
+                <p className="text-xs font-bold text-primary leading-tight">Email Notifications</p>
+                <p className="text-[10px] text-on-surface-variant/80 mt-0.5">
+                  Receive periodic financial digests and budget alerts
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEmailNotifications(!emailNotifications)}
+                className={`w-11 h-6 flex items-center rounded-full p-0.5 cursor-pointer transition-colors ${
+                  emailNotifications ? 'bg-primary' : 'bg-outline-variant/60'
+                }`}
+              >
+                <motion.div
+                  className="bg-white w-5 h-5 rounded-full shadow-sm"
+                  layout
+                  transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                  animate={{ x: emailNotifications ? 20 : 0 }}
+                />
+              </button>
             </div>
           </div>
 
