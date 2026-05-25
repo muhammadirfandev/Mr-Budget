@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, 
   ReceiptText, 
@@ -34,6 +34,11 @@ import LinkAccountModal from './components/LinkAccountModal';
 import EditBudgetModal from './components/EditBudgetModal';
 import AdvisoryModal from './components/AdvisoryModal';
 
+// Firebase core integration
+import { auth, db, googleProvider, handleFirestoreError, OperationType } from './firebase';
+import { onAuthStateChanged, signInWithPopup, signOut, User as FirebaseUser } from 'firebase/auth';
+import { doc, setDoc, updateDoc, collection, onSnapshot, writeBatch, getDocFromServer } from 'firebase/firestore';
+
 export default function App() {
   // Global Database State
   const [selectedCurrencyCode, setSelectedCurrencyCode] = useState<CurrencyCode>('PKR');
@@ -47,6 +52,186 @@ export default function App() {
 
   const [isSyncing, setIsSyncing] = useState(false);
 
+  // Auth User state
+  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  // Authentication controllers
+  const handleSignIn = async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (error) {
+      console.error('Google Sign In Error:', error);
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error('Google Sign Out Error:', error);
+    }
+  };
+
+  const handleCurrencyCodeChange = async (newCode: CurrencyCode) => {
+    setSelectedCurrencyCode(newCode);
+    if (auth.currentUser) {
+      const userId = auth.currentUser.uid;
+      try {
+        const userRef = doc(db, 'users', userId);
+        await setDoc(userRef, { userId, selectedCurrencyCode: newCode, updatedAt: new Date().toISOString() }, { merge: true });
+      } catch (error) {
+        handleFirestoreError(error, OperationType.WRITE, `users/${userId}`);
+      }
+    }
+  };
+
+  // Setup real-time listeners and database seeding
+  useEffect(() => {
+    const unsubscribeAuth = onAuthStateChanged(auth, async (fbUser) => {
+      setCurrentUser(fbUser);
+      setAuthLoading(false);
+
+      if (fbUser) {
+        const userId = fbUser.uid;
+        const userDocRef = doc(db, 'users', userId);
+        let userProfileExists = false;
+
+        try {
+          // Verify if user account was already seeded
+          const userSnap = await getDocFromServer(userDocRef);
+          userProfileExists = userSnap.exists();
+        } catch (e) {
+          console.warn('Could not read user profile from server:', e);
+        }
+
+        if (!userProfileExists) {
+          // First time user registration: Seed baseline values
+          try {
+            const batch = writeBatch(db);
+            batch.set(userDocRef, {
+              userId,
+              selectedCurrencyCode,
+              updatedAt: new Date().toISOString()
+            });
+
+            accounts.forEach((acc) => {
+              const ref = doc(db, `users/${userId}/accounts`, acc.id);
+              batch.set(ref, { ...acc, userId });
+            });
+
+            transactions.forEach((tx) => {
+              const ref = doc(db, `users/${userId}/transactions`, tx.id);
+              batch.set(ref, { ...tx, userId });
+            });
+
+            budgets.forEach((bd) => {
+              const ref = doc(db, `users/${userId}/budgets`, bd.id);
+              batch.set(ref, { ...bd, userId });
+            });
+
+            goals.forEach((gl) => {
+              const ref = doc(db, `users/${userId}/goals`, gl.id);
+              batch.set(ref, { ...gl, userId });
+            });
+
+            bills.forEach((bl) => {
+              const ref = doc(db, `users/${userId}/bills`, bl.id);
+              batch.set(ref, { ...bl, userId });
+            });
+
+            await batch.commit();
+          } catch (seedErr) {
+            console.error('Failed to seed user database during registration:', seedErr);
+          }
+        }
+
+        // Establish reactive content subscriptions
+        const unsubUser = onSnapshot(userDocRef, (snapshot) => {
+          if (snapshot.exists()) {
+            const data = snapshot.data();
+            if (data.selectedCurrencyCode) {
+              setSelectedCurrencyCode(data.selectedCurrencyCode);
+            }
+          }
+        }, (error) => {
+          handleFirestoreError(error, OperationType.GET, `users/${userId}`);
+        });
+
+        const unsubTx = onSnapshot(collection(db, `users/${userId}/transactions`), (snapshot) => {
+          const loaded: Transaction[] = [];
+          snapshot.forEach((doc) => {
+            loaded.push(doc.data() as Transaction);
+          });
+          loaded.sort((a, b) => b.date.localeCompare(a.date));
+          setTransactions(loaded);
+        }, (error) => {
+          handleFirestoreError(error, OperationType.GET, `users/${userId}/transactions`);
+        });
+
+        const unsubAcc = onSnapshot(collection(db, `users/${userId}/accounts`), (snapshot) => {
+          const loaded: LinkedAccount[] = [];
+          snapshot.forEach((doc) => {
+            loaded.push(doc.data() as LinkedAccount);
+          });
+          setAccounts(loaded);
+        }, (error) => {
+          handleFirestoreError(error, OperationType.GET, `users/${userId}/accounts`);
+        });
+
+        const unsubBudgets = onSnapshot(collection(db, `users/${userId}/budgets`), (snapshot) => {
+          const loaded: BudgetCategory[] = [];
+          snapshot.forEach((doc) => {
+            loaded.push(doc.data() as BudgetCategory);
+          });
+          setBudgets(loaded);
+        }, (error) => {
+          handleFirestoreError(error, OperationType.GET, `users/${userId}/budgets`);
+        });
+
+        const unsubGoals = onSnapshot(collection(db, `users/${userId}/goals`), (snapshot) => {
+          const loaded: SavingsGoal[] = [];
+          snapshot.forEach((doc) => {
+            loaded.push(doc.data() as SavingsGoal);
+          });
+          setGoals(loaded);
+        }, (error) => {
+          handleFirestoreError(error, OperationType.GET, `users/${userId}/goals`);
+        });
+
+        const unsubBills = onSnapshot(collection(db, `users/${userId}/bills`), (snapshot) => {
+          const loaded: UpcomingBill[] = [];
+          snapshot.forEach((doc) => {
+            loaded.push(doc.data() as UpcomingBill);
+          });
+          loaded.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+          setBills(loaded);
+        }, (error) => {
+          handleFirestoreError(error, OperationType.GET, `users/${userId}/bills`);
+        });
+
+        return () => {
+          unsubUser();
+          unsubTx();
+          unsubAcc();
+          unsubBudgets();
+          unsubGoals();
+          unsubBills();
+        };
+      } else {
+        // Guest mode fallback
+        setTransactions(INITIAL_TRANSACTIONS);
+        setAccounts(INITIAL_ACCOUNTS);
+        setBudgets(INITIAL_BUDGET_CATEGORIES);
+        setGoals(INITIAL_GOALS);
+        setBills(INITIAL_BILLS);
+        setSelectedCurrencyCode('PKR');
+      }
+    });
+
+    return () => unsubscribeAuth();
+  }, []);
+
   // Layout navigation: 0 = Overview, 1 = Transactions Ledger, 2 = Budget Planner, 3 = Accounts & Goals
   const [activeTab, setActiveTab] = useState(0);
 
@@ -57,155 +242,332 @@ export default function App() {
   const [isAdvisoryOpen, setIsAdvisoryOpen] = useState(false);
 
   // Global State Modifiers
-  const handleAddTransaction = (newTx: Transaction) => {
-    // Save to list
-    setTransactions((prev) => [newTx, ...prev]);
+  const handleAddTransaction = async (newTx: Transaction) => {
+    if (!auth.currentUser) {
+      // Offline fallback
+      setTransactions((prev) => [newTx, ...prev]);
+      setAccounts((prevAccounts) =>
+        prevAccounts.map((acc) => {
+          if (acc.name === newTx.account) {
+            return { ...acc, balance: acc.balance + newTx.amount };
+          }
+          return acc;
+        })
+      );
+      setBudgets((prevBudgets) =>
+        prevBudgets.map((b) => {
+          const isMatch = b.name.toLowerCase() === newTx.category.toLowerCase() ||
+                          (b.name === 'Groceries' && newTx.category === 'Food & Dining');
+          if (isMatch && newTx.amount < 0) {
+            return {
+              ...b,
+              currentSpent: b.currentSpent + Math.abs(newTx.amount),
+            };
+          }
+          return b;
+        })
+      );
+      return;
+    }
 
-    // Perform interactive credit/bank balance deductions instantly!
-    setAccounts((prevAccounts) =>
-      prevAccounts.map((acc) => {
-        if (acc.name === newTx.account) {
-          // Subtract or add
-          return {
-            ...acc,
-            balance: acc.balance + newTx.amount, // Adding because negative amounts subtract
-          };
-        }
-        return acc;
-      })
-    );
+    const userId = auth.currentUser.uid;
+    try {
+      const batch = writeBatch(db);
 
-    // Also update current spent inside corresponding category in budget planner automatically!
-    setBudgets((prevBudgets) =>
-      prevBudgets.map((b) => {
-        const isMatch = b.name.toLowerCase() === newTx.category.toLowerCase() ||
-                        (b.name === 'Groceries' && newTx.category === 'Food & Dining');
-        if (isMatch && newTx.amount < 0) {
-          return {
-            ...b,
-            currentSpent: b.currentSpent + Math.abs(newTx.amount),
-          };
-        }
-        return b;
-      })
-    );
+      // 1. Write the new Transaction document in the subcollection
+      const txRef = doc(db, `users/${userId}/transactions`, newTx.id);
+      batch.set(txRef, { ...newTx, userId });
+
+      // 2. Adjust target account balance
+      const targetAccount = accounts.find(a => a.name === newTx.account);
+      if (targetAccount) {
+        const accRef = doc(db, `users/${userId}/accounts`, targetAccount.id);
+        batch.update(accRef, { balance: targetAccount.balance + newTx.amount });
+      }
+
+      // 3. Adjust matching budget spends
+      const matchedBudget = budgets.find(b => b.name.toLowerCase() === newTx.category.toLowerCase() || (b.name === 'Groceries' && newTx.category === 'Food & Dining'));
+      if (matchedBudget && newTx.amount < 0) {
+        const budgetRef = doc(db, `users/${userId}/budgets`, matchedBudget.id);
+        batch.update(budgetRef, { currentSpent: matchedBudget.currentSpent + Math.abs(newTx.amount) });
+      }
+
+      await batch.commit();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `users/${userId}`);
+    }
   };
 
-  const handleDeleteTransaction = (id: string) => {
+  const handleDeleteTransaction = async (id: string) => {
     const txToDelete = transactions.find((t) => t.id === id);
     if (!txToDelete) return;
 
-    // Refund bank balance
-    setAccounts((prevAccounts) =>
-      prevAccounts.map((acc) => {
-        if (acc.name === txToDelete.account) {
-          return {
-            ...acc,
-            balance: acc.balance - txToDelete.amount,
-          };
-        }
-        return acc;
-      })
-    );
+    if (!auth.currentUser) {
+      // Offline fallback
+      setAccounts((prevAccounts) =>
+        prevAccounts.map((acc) => {
+          if (acc.name === txToDelete.account) {
+            return { ...acc, balance: acc.balance - txToDelete.amount };
+          }
+          return acc;
+        })
+      );
+      setBudgets((prevBudgets) =>
+        prevBudgets.map((b) => {
+          const isMatch = b.name.toLowerCase() === txToDelete.category.toLowerCase() ||
+                          (b.name === 'Groceries' && txToDelete.category === 'Food & Dining');
+          if (isMatch && txToDelete.amount < 0) {
+            return {
+              ...b,
+              currentSpent: Math.max(0, b.currentSpent - Math.abs(txToDelete.amount)),
+            };
+          }
+          return b;
+        })
+      );
+      setTransactions((prev) => prev.filter((t) => t.id !== id));
+      return;
+    }
 
-    // Refund budget spending
-    setBudgets((prevBudgets) =>
-      prevBudgets.map((b) => {
-        const isMatch = b.name.toLowerCase() === txToDelete.category.toLowerCase() ||
-                        (b.name === 'Groceries' && txToDelete.category === 'Food & Dining');
-        if (isMatch && txToDelete.amount < 0) {
-          return {
-            ...b,
-            currentSpent: Math.max(0, b.currentSpent - Math.abs(txToDelete.amount)),
-          };
-        }
-        return b;
-      })
-    );
+    const userId = auth.currentUser.uid;
+    try {
+      const batch = writeBatch(db);
 
-    // Filter transaction list
-    setTransactions((prev) => prev.filter((t) => t.id !== id));
+      // 1. Delete document
+      const txRef = doc(db, `users/${userId}/transactions`, id);
+      batch.delete(txRef);
+
+      // 2. Refund corresponding account balance
+      const targetAccount = accounts.find(a => a.name === txToDelete.account);
+      if (targetAccount) {
+        const accRef = doc(db, `users/${userId}/accounts`, targetAccount.id);
+        batch.update(accRef, { balance: targetAccount.balance - txToDelete.amount });
+      }
+
+      // 3. Refund corresponding budget Spent
+      const matchedBudget = budgets.find(b => b.name.toLowerCase() === txToDelete.category.toLowerCase() || (b.name === 'Groceries' && txToDelete.category === 'Food & Dining'));
+      if (matchedBudget && txToDelete.amount < 0) {
+        const budgetRef = doc(db, `users/${userId}/budgets`, matchedBudget.id);
+        batch.update(budgetRef, { currentSpent: Math.max(0, matchedBudget.currentSpent - Math.abs(txToDelete.amount)) });
+      }
+
+      await batch.commit();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `users/${userId}`);
+    }
   };
 
-  const handleLinkAccount = (newAcc: LinkedAccount) => {
-    setAccounts((prev) => [...prev, newAcc]);
+  const handleLinkAccount = async (newAcc: LinkedAccount) => {
+    if (!auth.currentUser) {
+      setAccounts((prev) => [...prev, newAcc]);
+      return;
+    }
+
+    const userId = auth.currentUser.uid;
+    try {
+      const accRef = doc(db, `users/${userId}/accounts`, newAcc.id);
+      await setDoc(accRef, { ...newAcc, userId });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, `users/${userId}/accounts/${newAcc.id}`);
+    }
   };
 
-  const handleUpdateBudget = (updated: BudgetCategory[]) => {
-    setBudgets(updated);
+  const handleUpdateBudget = async (updated: BudgetCategory[]) => {
+    if (!auth.currentUser) {
+      setBudgets(updated);
+      return;
+    }
+
+    const userId = auth.currentUser.uid;
+    try {
+      const batch = writeBatch(db);
+      for (const cat of updated) {
+        const budgetRef = doc(db, `users/${userId}/budgets`, cat.id);
+        batch.set(budgetRef, { ...cat, userId });
+      }
+      await batch.commit();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `users/${userId}/budgets`);
+    }
   };
 
-  const handleUpdateBill = (billId: string, updatedFields: Partial<UpcomingBill>) => {
-    setBills((prev) =>
-      prev.map((b) => (b.id === billId ? { ...b, ...updatedFields } : b))
-    );
+  const handleUpdateBill = async (billId: string, updatedFields: Partial<UpcomingBill>) => {
+    if (!auth.currentUser) {
+      setBills((prev) =>
+        prev.map((b) => (b.id === billId ? { ...b, ...updatedFields } : b))
+      );
+      return;
+    }
+
+    const userId = auth.currentUser.uid;
+    try {
+      const billRef = doc(db, `users/${userId}/bills`, billId);
+      await updateDoc(billRef, updatedFields);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `users/${userId}/bills/${billId}`);
+    }
   };
 
-  const handlePayBill = (billId: string) => {
+  const handlePayBill = async (billId: string) => {
     const bill = bills.find((b) => b.id === billId);
     if (!bill) return;
 
-    // Add a corresponding transaction automatically!
-    const category = bill.title.toLowerCase().includes('rent') ? 'Rent & Housing' : 'Entertainment';
-    handleAddTransaction({
-      id: `tx-bill-${Date.now()}`,
+    const category: string = bill.title.toLowerCase().includes('rent') ? 'Rent & Housing' : 'Entertainment';
+    const txId = `tx-bill-${Date.now()}`;
+    const newTx: Transaction = {
+      id: txId,
       title: bill.title,
       description: `Bill Payment - ${bill.category}`,
       category,
       amount: -bill.amount,
       date: new Date().toISOString().split('T')[0],
       account: 'Main Checking',
-    });
+    };
 
-    // Remove bill from upcoming lists
-    setBills((prev) => prev.filter((b) => b.id !== billId));
-  };
+    if (!auth.currentUser) {
+      handleAddTransaction(newTx);
+      setBills((prev) => prev.filter((b) => b.id !== billId));
+      return;
+    }
 
-  const handleContributeToGoal = (goalId: string, amount: number) => {
-    // Deduct from Main Checking or most liquid account
-    setAccounts((prevAccounts) => {
-      const mainChecking = prevAccounts.find((a) => a.name === 'Main Checking');
-      if (mainChecking && mainChecking.balance >= amount) {
-        return prevAccounts.map((a) =>
-          a.name === 'Main Checking' ? { ...a, balance: a.balance - amount } : a
-        );
+    const userId = auth.currentUser.uid;
+    try {
+      const batch = writeBatch(db);
+
+      // 1. Delete the paid upcoming bill
+      const billRef = doc(db, `users/${userId}/bills`, billId);
+      batch.delete(billRef);
+
+      // 2. Add the corresponding transaction
+      const txRef = doc(db, `users/${userId}/transactions`, txId);
+      batch.set(txRef, { ...newTx, userId });
+
+      // 3. Deduct transaction balance from standard liquid account ("Main Checking")
+      const mainChecking = accounts.find(a => a.name === 'Main Checking');
+      if (mainChecking) {
+        const accRef = doc(db, `users/${userId}/accounts`, mainChecking.id);
+        batch.update(accRef, { balance: mainChecking.balance - bill.amount });
       }
-      return prevAccounts;
-    });
 
-    // Add to specific Goal progress metrics!
-    setGoals((prevGoals) =>
-      prevGoals.map((g) =>
-        g.id === goalId ? { ...g, currentSaved: Math.min(g.targetSaved, g.currentSaved + amount) } : g
-      )
-    );
+      // 4. Update core matching slots
+      const matchedBudget = budgets.find(b => b.name.toLowerCase() === category.toLowerCase() || (b.name === 'Groceries' && category === 'Food & Dining'));
+      if (matchedBudget) {
+        const budgetRef = doc(db, `users/${userId}/budgets`, matchedBudget.id);
+        batch.update(budgetRef, { currentSpent: matchedBudget.currentSpent + bill.amount });
+      }
+
+      await batch.commit();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `users/${userId}`);
+    }
   };
 
-  const handleAddBudgetCategory = (newCat: Omit<BudgetCategory, 'id' | 'currentSpent'>) => {
+  const handleContributeToGoal = async (goalId: string, amount: number) => {
+    const goal = goals.find((g) => g.id === goalId);
+    if (!goal) return;
+
+    if (!auth.currentUser) {
+      // Offline fallback
+      setAccounts((prevAccounts) => {
+        const mainChecking = prevAccounts.find((a) => a.name === 'Main Checking');
+        if (mainChecking && mainChecking.balance >= amount) {
+          return prevAccounts.map((a) =>
+            a.name === 'Main Checking' ? { ...a, balance: a.balance - amount } : a
+          );
+        }
+        return prevAccounts;
+      });
+      setGoals((prevGoals) =>
+        prevGoals.map((g) =>
+          g.id === goalId ? { ...g, currentSaved: Math.min(g.targetSaved, g.currentSaved + amount) } : g
+        )
+      );
+      return;
+    }
+
+    const userId = auth.currentUser.uid;
+    try {
+      const batch = writeBatch(db);
+
+      // 1. Check account balance
+      const mainChecking = accounts.find(a => a.name === 'Main Checking');
+      if (mainChecking && mainChecking.balance >= amount) {
+        const accRef = doc(db, `users/${userId}/accounts`, mainChecking.id);
+        batch.update(accRef, { balance: mainChecking.balance - amount });
+      }
+
+      // 2. Increment saved goals metrics
+      const goalRef = doc(db, `users/${userId}/goals`, goalId);
+      batch.update(goalRef, { currentSaved: Math.min(goal.targetSaved, goal.currentSaved + amount) });
+
+      await batch.commit();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `users/${userId}`);
+    }
+  };
+
+  const handleAddBudgetCategory = async (newCat: Omit<BudgetCategory, 'id' | 'currentSpent'>) => {
+    const freshId = `cat-${Date.now()}`;
     const freshCat: BudgetCategory = {
       ...newCat,
-      id: `cat-${Date.now()}`,
+      id: freshId,
       currentSpent: 0,
     };
-    setBudgets((prev) => [...prev, freshCat]);
+
+    if (!auth.currentUser) {
+      setBudgets((prev) => [...prev, freshCat]);
+      return;
+    }
+
+    const userId = auth.currentUser.uid;
+    try {
+      const budgetRef = doc(db, `users/${userId}/budgets`, freshId);
+      await setDoc(budgetRef, { ...freshCat, userId });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, `users/${userId}/budgets/${freshId}`);
+    }
   };
 
-  const handleSyncAccounts = () => {
+  const handleSyncAccounts = async () => {
     setIsSyncing(true);
-    setTimeout(() => {
-      setAccounts((prevAccounts) =>
-        prevAccounts.map((acc) => {
-          const newLast4 = Math.floor(1000 + Math.random() * 9000).toString();
-          const latency = Math.floor(45 + Math.random() * 85);
-          return {
-            ...acc,
-            last4: newLast4,
-            syncTime: `Updated just now (${latency}ms ping)`,
-          };
-        })
-      );
+
+    if (!auth.currentUser) {
+      // Offline simulation
+      setTimeout(() => {
+        setAccounts((prevAccounts) =>
+          prevAccounts.map((acc) => {
+            const newLast4 = Math.floor(1000 + Math.random() * 9000).toString();
+            const latency = Math.floor(45 + Math.random() * 85);
+            return {
+              ...acc,
+              last4: newLast4,
+              syncTime: `Updated just now (${latency}ms ping)`,
+            };
+          })
+        );
+        setIsSyncing(false);
+      }, 1500);
+      return;
+    }
+
+    const userId = auth.currentUser.uid;
+    try {
+      const batch = writeBatch(db);
+      for (const acc of accounts) {
+        const newLast4 = Math.floor(1000 + Math.random() * 9000).toString();
+        const latency = Math.floor(45 + Math.random() * 85);
+        const accRef = doc(db, `users/${userId}/accounts`, acc.id);
+        batch.update(accRef, {
+          last4: newLast4,
+          syncTime: `Updated just now (${latency}ms ping)`,
+        });
+      }
+      await batch.commit();
       setIsSyncing(false);
-    }, 1500);
+    } catch (error) {
+      setIsSyncing(false);
+      handleFirestoreError(error, OperationType.WRITE, `users/${userId}/accounts`);
+    }
   };
 
   // Derive global numerical stats dynamically from current lists!
@@ -290,7 +652,7 @@ export default function App() {
         </nav>
 
         {/* Global actions at bottom */}
-        <div className="mt-auto pt-6 px-2">
+        <div className="mt-auto pt-6 px-2 flex flex-col gap-4 border-t border-outline-variant/65">
           <button
             type="button"
             onClick={() => setIsAddTxOpen(true)}
@@ -299,6 +661,49 @@ export default function App() {
             <Plus className="w-4 h-4" />
             Add Transaction
           </button>
+
+          {/* Firebase Database Sync Panel */}
+          <div>
+            {currentUser ? (
+              <div className="bg-surface-container-low border border-outline-variant/50 rounded-xl p-3 flex flex-col gap-2">
+                <div className="flex items-center gap-2.5">
+                  <img
+                    src={currentUser.photoURL || "https://lh3.googleusercontent.com/aida-public/AB6AXuAJyQZ2Er5Ufqz9K7ClQekPOkYEfEL1Pkxu71cGPTkQwghsIC2nV3Ok-Xn9c08y9JOeIJPN5AYoPDVkHTrJdqpBk365Vt5mTlNWEiC3vetmY_AL3oDj_xqWiKTWl6B89LhDUWQlr3q8D1MI0rLZAMzzCYrAsFWn6QhS3-iPxtTLsPWTdyJrrwNNk0R5e2iCscE1enkj7Lcndt-L9Z8g-5f-8TrwdSvV-priG_BIvfc2JG3Qbig5U7MgvzpUhGLChx-yheYw0-2TlJ0"}
+                    alt={currentUser.displayName || "Google User"}
+                    className="w-8 h-8 rounded-full border border-primary/20 bg-surface-container object-cover"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-bold text-primary truncate leading-tight">
+                      {currentUser.displayName || "Google User"}
+                    </p>
+                    <p className="text-[10px] text-on-surface-variant/80 truncate font-mono">
+                      Cloud Synced
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSignOut}
+                  className="w-full bg-surface-container-high hover:bg-surface-container-highest text-on-surface text-[10px] font-semibold py-1.5 rounded-lg border border-outline-variant/30 cursor-pointer transition-all"
+                >
+                  Sign Out
+                </button>
+              </div>
+            ) : (
+              <div className="bg-primary/5 hover:bg-primary/[0.08] border border-primary/15 rounded-xl p-3 flex flex-col gap-2 transition-all">
+                <p className="text-[10px] font-medium text-primary/80 leading-snug">
+                  Save your financial logs to secure cloud servers automatically.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleSignIn}
+                  className="w-full bg-primary hover:opacity-95 text-white font-bold py-2 rounded-lg text-[10px] cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow-sm border border-primary/10"
+                >
+                  🔑 Google Cloud Backup
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
       </aside>
@@ -337,7 +742,7 @@ export default function App() {
               <select
                 id="currency-selector"
                 value={selectedCurrencyCode}
-                onChange={(e) => setSelectedCurrencyCode(e.target.value as CurrencyCode)}
+                onChange={(e) => handleCurrencyCodeChange(e.target.value as CurrencyCode)}
                 className="bg-surface-container-low text-xs font-bold text-primary pl-3 pr-8 py-1.5 rounded-full border border-outline-variant focus:outline-none focus:border-primary appearance-none cursor-pointer transition-colors hover:bg-surface-container-high h-[36px] min-w-[110px]"
                 title="Select Base Currency"
               >
@@ -370,17 +775,37 @@ export default function App() {
               <HelpCircle className="w-5 h-5 text-on-surface-variant" />
             </button>
 
-            {/* Profile Avatar portrait of professional headshot */}
-            <div 
-              onClick={() => setIsAdvisoryOpen(true)}
-              className="h-8 w-8 rounded-full overflow-hidden border border-outline-variant bg-surface-container cursor-pointer hover:border-primary/50 transition-colors"
-            >
-              <img 
-                alt="User Profile" 
-                className="w-full h-full object-cover select-none"
-                src="https://lh3.googleusercontent.com/aida-public/AB6AXuAJyQZ2Er5Ufqz9K7ClQekPOkYEfEL1Pkxu71cGPTkQwghsIC2nV3Ok-Xn9c08y9JOeIJPN5AYoPDVkHTrJdqpBk365Vt5mTlNWEiC3vetmY_AL3oDj_xqWiKTWl6B89LhDUWQlr3q8D1MI0rLZAMzzCYrAsFWn6QhS3-iPxtTLsPWTdyJrrwNNk0R5e2iCscE1enkj7Lcndt-L9Z8g-5f-8TrwdSvV-priG_BIvfc2JG3Qbig5U7MgvzpUhGLChx-yheYw0-2TlJ0"
-              />
-            </div>
+            {/* Real user or Sign In status on mobile toolbar */}
+            {currentUser ? (
+              <div className="flex items-center gap-2">
+                <span className="hidden leading-none text-right sm:block">
+                  <p className="text-[10px] font-bold text-primary truncate leading-tight max-w-[80px]">
+                    {currentUser.displayName || "Google User"}
+                  </p>
+                  <p className="text-[8px] text-emerald-600 font-bold tracking-wider uppercase font-mono">Synced</p>
+                </span>
+                <div 
+                  onClick={handleSignOut}
+                  title="Click to Sign Out"
+                  className="h-8 w-8 rounded-full overflow-hidden border border-primary/30 bg-surface-container cursor-pointer hover:border-error transition-colors object-cover"
+                >
+                  <img 
+                    alt="User Profile" 
+                    className="w-full h-full object-cover select-none"
+                    src={currentUser.photoURL || "https://lh3.googleusercontent.com/aida-public/AB6AXuAJyQZ2Er5Ufqz9K7ClQekPOkYEfEL1Pkxu71cGPTkQwghsIC2nV3Ok-Xn9c08y9JOeIJPN5AYoPDVkHTrJdqpBk365Vt5mTlNWEiC3vetmY_AL3oDj_xqWiKTWl6B89LhDUWQlr3q8D1MI0rLZAMzzCYrAsFWn6QhS3-iPxtTLsPWTdyJrrwNNk0R5e2iCscE1enkj7Lcndt-L9Z8g-5f-8TrwdSvV-priG_BIvfc2JG3Qbig5U7MgvzpUhGLChx-yheYw0-2TlJ0"}
+                  />
+                </div>
+              </div>
+            ) : (
+              <button 
+                type="button"
+                onClick={handleSignIn}
+                className="bg-primary text-white text-[10px] font-black px-2.5 py-1.5 rounded-full flex items-center gap-1.5 hover:opacity-90 transition-all shadow-sm cursor-pointer border border-primary/10"
+                title="Sign In with Google"
+              >
+                <span>🔑 Sign In</span>
+              </button>
+            )}
           </div>
 
         </header>

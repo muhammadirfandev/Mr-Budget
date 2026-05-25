@@ -1,0 +1,164 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Common helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Rules for User document
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow create: if isOwner(userId)
+                    && incoming().userId == userId
+                    && incoming().selectedCurrencyCode in ['USD', 'EUR', 'PKR', 'BHD'];
+      allow update: if isOwner(userId)
+                    && incoming().userId == userId
+                    && incoming().selectedCurrencyCode in ['USD', 'EUR', 'PKR', 'BHD']
+                    && incoming().diff(existing()).affectedKeys().hasOnly(['selectedCurrencyCode', 'updatedAt']);
+    }
+
+    // Rules for User's Transactions subcollection
+    match /users/{userId}/transactions/{transactionId} {
+      allow list, get: if isOwner(userId);
+      allow create: if isOwner(userId)
+                    && isValidId(transactionId)
+                    && incoming().userId == userId
+                    && incoming().id is string && incoming().id.size() <= 128
+                    && incoming().title is string && incoming().title.size() <= 200
+                    && incoming().description is string && incoming().description.size() <= 1000
+                    && incoming().category is string && incoming().category.size() <= 100
+                    && incoming().amount is number
+                    && incoming().date is string && incoming().date.size() <= 64
+                    && incoming().account is string && incoming().account.size() <= 128;
+      allow update: if isOwner(userId)
+                    && isValidId(transactionId)
+                    && incoming().userId == userId
+                    && incoming().title is string && incoming().title.size() <= 200
+                    && incoming().description is string && incoming().description.size() <= 1000
+                    && incoming().category is string && incoming().category.size() <= 100
+                    && incoming().amount is number
+                    && incoming().date is string && incoming().date.size() <= 64
+                    && incoming().account is string && incoming().account.size() <= 128
+                    && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'category', 'amount', 'date', 'account']);
+      allow delete: if isOwner(userId);
+    }
+
+    // Rules for User's Linked Accounts subcollection
+    match /users/{userId}/accounts/{accountId} {
+      allow list, get: if isOwner(userId);
+      allow create: if isOwner(userId)
+                    && isValidId(accountId)
+                    && incoming().userId == userId
+                    && incoming().id is string && incoming().id.size() <= 128
+                    && incoming().name is string && incoming().name.size() <= 128
+                    && incoming().bank is string && incoming().bank.size() <= 128
+                    && incoming().last4 is string && incoming().last4.size() == 4
+                    && incoming().balance is number
+                    && incoming().syncTime is string && incoming().syncTime.size() <= 128
+                    && incoming().type in ['checking', 'savings', 'credit', 'investment'];
+      allow update: if isOwner(userId)
+                    && isValidId(accountId)
+                    && incoming().userId == userId
+                    && incoming().name is string && incoming().name.size() <= 128
+                    && incoming().bank is string && incoming().bank.size() <= 128
+                    && incoming().last4 is string && incoming().last4.size() == 4
+                    && incoming().balance is number
+                    && incoming().syncTime is string && incoming().syncTime.size() <= 128
+                    && incoming().type in ['checking', 'savings', 'credit', 'investment']
+                    && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'bank', 'last4', 'balance', 'syncTime', 'type', 'apy']);
+      allow delete: if isOwner(userId);
+    }
+
+    // Rules for User's Budgets subcollection
+    match /users/{userId}/budgets/{budgetId} {
+      allow list, get: if isOwner(userId);
+      allow create: if isOwner(userId)
+                    && isValidId(budgetId)
+                    && incoming().userId == userId
+                    && incoming().id is string && incoming().id.size() <= 128
+                    && incoming().name is string && incoming().name.size() <= 128
+                    && incoming().currentSpent is number
+                    && incoming().limitSpent is number
+                    && incoming().type is string && incoming().type.size() <= 128
+                    && incoming().iconName is string && incoming().iconName.size() <= 128;
+      allow update: if isOwner(userId)
+                    && isValidId(budgetId)
+                    && incoming().userId == userId
+                    && incoming().name is string && incoming().name.size() <= 128
+                    && incoming().currentSpent is number
+                    && incoming().limitSpent is number
+                    && incoming().type is string && incoming().type.size() <= 128
+                    && incoming().iconName is string && incoming().iconName.size() <= 128
+                    && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'currentSpent', 'limitSpent', 'type', 'iconName']);
+      allow delete: if isOwner(userId);
+    }
+
+    // Rules for User's Savings Goals subcollection
+    match /users/{userId}/goals/{goalId} {
+      allow list, get: if isOwner(userId);
+      allow create: if isOwner(userId)
+                    && isValidId(goalId)
+                    && incoming().userId == userId
+                    && incoming().id is string && incoming().id.size() <= 128
+                    && incoming().name is string && incoming().name.size() <= 128
+                    && incoming().currentSaved is number
+                    && incoming().targetSaved is number
+                    && incoming().color is string && incoming().color.size() <= 128;
+      allow update: if isOwner(userId)
+                    && isValidId(goalId)
+                    && incoming().userId == userId
+                    && incoming().name is string && incoming().name.size() <= 128
+                    && incoming().currentSaved is number
+                    && incoming().targetSaved is number
+                    && incoming().color is string && incoming().color.size() <= 128
+                    && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'currentSaved', 'targetSaved', 'color']);
+      allow delete: if isOwner(userId);
+    }
+
+    // Rules for User's Upcoming Bills subcollection
+    match /users/{userId}/bills/{billId} {
+      allow list, get: if isOwner(userId);
+      allow create: if isOwner(userId)
+                    && isValidId(billId)
+                    && incoming().userId == userId
+                    && incoming().id is string && incoming().id.size() <= 128
+                    && incoming().title is string && incoming().title.size() <= 200
+                    && incoming().category is string && incoming().category.size() <= 100
+                    && incoming().dueDate is string && incoming().dueDate.size() <= 64
+                    && incoming().amount is number
+                    && incoming().status in ['DUE SOON', 'SCHEDULED', 'MANUAL'];
+      allow update: if isOwner(userId)
+                    && isValidId(billId)
+                    && incoming().userId == userId
+                    && incoming().title is string && incoming().title.size() <= 200
+                    && incoming().category is string && incoming().category.size() <= 100
+                    && incoming().dueDate is string && incoming().dueDate.size() <= 64
+                    && incoming().amount is number
+                    && incoming().status in ['DUE SOON', 'SCHEDULED', 'MANUAL']
+                    && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'category', 'dueDate', 'amount', 'status']);
+      allow delete: if isOwner(userId);
+    }
+  }
+}

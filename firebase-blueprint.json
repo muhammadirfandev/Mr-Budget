@@ -1,0 +1,120 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Information about the user and their global settings.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "selectedCurrencyCode": { "type": "string", "enum": ["USD", "EUR", "PKR", "BHD"] },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "selectedCurrencyCode"]
+    },
+    "Transaction": {
+      "title": "Transaction Record",
+      "description": "A financial transaction representing spending or income.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "category": { "type": "string" },
+        "amount": { "type": "number" },
+        "date": { "type": "string" },
+        "account": { "type": "string" },
+        "merchantId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "title", "category", "amount", "date", "account"]
+    },
+    "LinkedAccount": {
+      "title": "Linked Account",
+      "description": "A checking, savings, investment or credit account linked to the system.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "bank": { "type": "string" },
+        "last4": { "type": "string" },
+        "balance": { "type": "number" },
+        "syncTime": { "type": "string" },
+        "type": { "type": "string", "enum": ["checking", "savings", "credit", "investment"] },
+        "apy": { "type": "string" }
+      },
+      "required": ["id", "userId", "name", "bank", "last4", "balance", "syncTime", "type"]
+    },
+    "BudgetCategory": {
+      "title": "Budget Category",
+      "description": "A month peak limit budget slot for spending tracking.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "currentSpent": { "type": "number" },
+        "limitSpent": { "type": "number" },
+        "type": { "type": "string" },
+        "iconName": { "type": "string" }
+      },
+      "required": ["id", "userId", "name", "currentSpent", "limitSpent", "type", "iconName"]
+    },
+    "SavingsGoal": {
+      "title": "Savings Goal",
+      "description": "A target allocation destination track.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "currentSaved": { "type": "number" },
+        "targetSaved": { "type": "number" },
+        "color": { "type": "string" }
+      },
+      "required": ["id", "userId", "name", "currentSaved", "targetSaved", "color"]
+    },
+    "UpcomingBill": {
+      "title": "Upcoming Bill",
+      "description": "An upcoming regular bill payment track.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "category": { "type": "string" },
+        "dueDate": { "type": "string" },
+        "amount": { "type": "number" },
+        "status": { "type": "string", "enum": ["DUE SOON", "SCHEDULED", "MANUAL"] }
+      },
+      "required": ["id", "userId", "title", "category", "dueDate", "amount", "status"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "User profile document containing currency configurations."
+    },
+    "users/{userId}/transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "Collection of transactions belonging to this user."
+    },
+    "users/{userId}/accounts/{accountId}": {
+      "schema": "LinkedAccount",
+      "description": "Collection of linked bank/credit accounts belonging to this user."
+    },
+    "users/{userId}/budgets/{budgetId}": {
+      "schema": "BudgetCategory",
+      "description": "Collection of budgets belonging to this user."
+    },
+    "users/{userId}/goals/{goalId}": {
+      "schema": "SavingsGoal",
+      "description": "Collection of target savings goals belonging to this user."
+    },
+    "users/{userId}/bills/{billId}": {
+      "schema": "UpcomingBill",
+      "description": "Collection of upcoming bill items belonging to this user."
+    }
+  }
+}
