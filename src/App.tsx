@@ -135,6 +135,12 @@ export default function App() {
     setBudgets(updated);
   };
 
+  const handleUpdateBill = (billId: string, updatedFields: Partial<UpcomingBill>) => {
+    setBills((prev) =>
+      prev.map((b) => (b.id === billId ? { ...b, ...updatedFields } : b))
+    );
+  };
+
   const handlePayBill = (billId: string) => {
     const bill = bills.find((b) => b.id === billId);
     if (!bill) return;
@@ -400,6 +406,7 @@ export default function App() {
                   onPayBill={handlePayBill}
                   onAddTransactionClick={() => setIsAddTxOpen(true)}
                   selectedCurrency={selectedCurrency}
+                  onUpdateBill={handleUpdateBill}
                 />
               )}
 

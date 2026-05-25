@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   TrendingUp, 
   Landmark, 
@@ -28,6 +28,7 @@ interface OverviewTabProps {
   onPayBill: (billId: string) => void;
   onAddTransactionClick: () => void;
   selectedCurrency: CurrencyConfig;
+  onUpdateBill: (billId: string, updatedFields: Partial<UpcomingBill>) => void;
 }
 
 export default function OverviewTab({
@@ -39,8 +40,28 @@ export default function OverviewTab({
   onNavigateToTab,
   onPayBill,
   onAddTransactionClick,
-  selectedCurrency
+  selectedCurrency,
+  onUpdateBill
 }: OverviewTabProps) {
+
+  // Inline edit state
+  const [editingBillId, setEditingBillId] = useState<string | null>(null);
+  const [editingAmount, setEditingAmount] = useState<string>('');
+
+  const startEditingAmount = (e: React.MouseEvent, billId: string, currentAmount: number) => {
+    e.stopPropagation();
+    setEditingBillId(billId);
+    setEditingAmount((currentAmount * selectedCurrency.rate).toFixed(selectedCurrency.code === 'BHD' ? 3 : 2));
+  };
+
+  const saveAmountEdit = (billId: string) => {
+    const parsedNum = parseFloat(editingAmount);
+    if (!isNaN(parsedNum) && parsedNum >= 0) {
+      const amountInUSD = parsedNum / selectedCurrency.rate;
+      onUpdateBill(billId, { amount: amountInUSD });
+    }
+    setEditingBillId(null);
+  };
 
   // Map category strings to specific Lucide components and colors
   const getCategoryTheme = (category: string) => {
@@ -201,7 +222,7 @@ export default function OverviewTab({
                 return (
                   <div 
                     key={bill.id} 
-                    className="flex items-center gap-3 p-3 bg-surface-container-low rounded-xl border border-transparent hover:border-outline-variant/60 transition-all cursor-pointer group"
+                    className="flex items-center gap-3 p-3 bg-surface-container-low rounded-xl border border-transparent hover:border-outline-variant/60 hover:bg-surface-container transition-all"
                   >
                     <div className="flex flex-col items-center justify-center bg-white border border-outline-variant rounded-lg p-1 w-12 shadow-sm shrink-0">
                       <span className="text-[9px] uppercase font-bold text-on-surface-variant">{month}</span>
@@ -213,22 +234,71 @@ export default function OverviewTab({
                       <p className="text-[11px] text-on-surface-variant truncate opacity-80">{bill.category}</p>
                     </div>
                     
-                    <div className="text-right shrink-0">
-                      <p className="text-sm font-bold text-primary font-mono tabular-nums">{formatMoney(bill.amount, selectedCurrency)}</p>
-                      <button
-                        type="button"
-                        onClick={() => onPayBill(bill.id)}
-                        className={`mt-1 font-sans font-bold text-[9px] px-2 py-0.5 rounded-full inline-block transition-all cursor-pointer ${
+                    <div className="flex flex-col items-end shrink-0 gap-1 min-w-[95px]">
+                      {editingBillId === bill.id ? (
+                        <div className="flex items-center gap-1 justify-end" onClick={(e) => e.stopPropagation()}>
+                          <span className="text-[10px] font-bold text-primary font-mono">{selectedCurrency.symbol.trim()}</span>
+                          <input
+                            type="number"
+                            step={selectedCurrency.code === 'BHD' ? '0.001' : '0.01'}
+                            className="w-16 px-1 py-0.5 bg-white border border-primary text-xs font-semibold text-right font-mono text-primary rounded outline-none focus:ring-1 focus:ring-primary"
+                            value={editingAmount}
+                            onChange={(e) => setEditingAmount(e.target.value)}
+                            onBlur={() => saveAmountEdit(bill.id)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                saveAmountEdit(bill.id);
+                              } else if (e.key === 'Escape') {
+                                setEditingBillId(null);
+                              }
+                            }}
+                            autoFocus
+                          />
+                        </div>
+                      ) : (
+                        <div 
+                          onClick={(e) => startEditingAmount(e, bill.id, bill.amount)}
+                          className="group/amt flex items-center gap-1 justify-end hover:bg-surface-container-high px-1.5 py-0.5 rounded border border-dashed border-transparent hover:border-outline-variant cursor-pointer transition-all"
+                          title="Click to edit amount inline"
+                        >
+                          <p className="text-sm font-bold text-primary font-mono tabular-nums leading-none">
+                            {formatMoney(bill.amount, selectedCurrency)}
+                          </p>
+                          <span className="text-[10px] text-outline opacity-0 group-hover/amt:opacity-100 transition-opacity">✎</span>
+                        </div>
+                      )}
+
+                      <select
+                        value={bill.status}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => {
+                          onUpdateBill(bill.id, { status: e.target.value as any });
+                        }}
+                        className={`font-sans font-bold text-[9px] px-2 py-0.5 rounded-full inline-block transition-all border border-outline-variant/40 hover:border-outline cursor-pointer appearance-none text-center bg-transparent ${
                           bill.status === 'DUE SOON'
-                            ? 'bg-error-container text-on-error-container hover:bg-error hover:text-white'
-                            : bill.status === 'SCHEDULED'
-                            ? 'bg-surface-container-high text-on-surface-variant'
-                            : 'bg-surface-container-high text-on-surface-variant'
+                            ? 'bg-error-container text-on-error-container hover:bg-error-container/85'
+                            : 'bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest'
                         }`}
+                        title="Click to edit status inline"
                       >
-                        {bill.status}
-                      </button>
+                        <option value="DUE SOON">DUE SOON</option>
+                        <option value="SCHEDULED">SCHEDULED</option>
+                        <option value="MANUAL">MANUAL</option>
+                      </select>
                     </div>
+
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onPayBill(bill.id);
+                      }}
+                      className="p-1 px-1.5 bg-secondary-container hover:bg-secondary/25 rounded-lg text-secondary border border-secondary/15 transition-colors cursor-pointer text-[10px] font-bold shrink-0 flex items-center gap-1"
+                      title="Settle/Pay and register transaction"
+                    >
+                      <CheckCircle className="w-3 h-3 text-secondary" />
+                      <span>Settle</span>
+                    </button>
                   </div>
                 );
               })}
