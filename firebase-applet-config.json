@@ -1,10 +1,10 @@
 {
-  "projectId": "festive-sprite-f8gvj",
-  "appId": "1:367825768885:web:4acf5766a404ed20d789fc",
-  "apiKey": "AIzaSyDovt3u0GD0J052gQTJr_NwmmDaToDQKU4",
-  "authDomain": "festive-sprite-f8gvj.firebaseapp.com",
+  "projectId": "mrbudget-23b7f",
+  "appId": "1:805021264060:web:e59f27ecd99ffb8472c8b9",
+  "apiKey": "AIzaSyAheyJgpJDDaRyepBbtNR6iojSiKikvxLU",
+  "authDomain": "mrbudget-23b7f.firebaseapp.com",
   "firestoreDatabaseId": "ai-studio-bc1d7425-987b-4b71-8f60-5694c9bba371",
-  "storageBucket": "festive-sprite-f8gvj.firebasestorage.app",
-  "messagingSenderId": "367825768885",
+  "storageBucket": "mrbudget-23b7f.firebasestorage.app",
+  "messagingSenderId": "805021264060",
   "measurementId": ""
 }
