@@ -4,7 +4,7 @@ Mr. Budget is a modern, responsive fintech web application designed to give user
 Technical Stack
 Frontend UI/UX: Designed using Stitch for a cohesive, component-driven design system and clean typography.
 
-Frontend Framework: Built with React.js, ensuring a highly responsive, single-page application (SPA) experience with smooth state management.
+Frontend Framework: Built with React.js,Tailwind CSS ensuring a highly responsive, single-page application (SPA) experience with smooth state management.
 
 Backend & Database: Powered by Firebase for real-time data synchronization, secure user authentication, and scalable cloud storage.
 
