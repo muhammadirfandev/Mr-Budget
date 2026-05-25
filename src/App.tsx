@@ -9,7 +9,8 @@ import {
   HelpCircle,
   Search,
   Check,
-  AlertCircle
+  AlertCircle,
+  Settings
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -33,6 +34,7 @@ import AddTransactionModal from './components/AddTransactionModal';
 import LinkAccountModal from './components/LinkAccountModal';
 import EditBudgetModal from './components/EditBudgetModal';
 import AdvisoryModal from './components/AdvisoryModal';
+import SettingsModal from './components/SettingsModal';
 
 // Firebase core integration
 import { auth, db, googleProvider, handleFirestoreError, OperationType } from './firebase';
@@ -55,6 +57,16 @@ export default function App() {
   // Auth User state
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+
+  // Custom User Profile State
+  const [profile, setProfile] = useState<{ displayName: string; photoURL: string }>(() => {
+    const savedName = localStorage.getItem('guest_displayName');
+    const savedPhoto = localStorage.getItem('guest_photoURL');
+    return {
+      displayName: savedName || 'Guest User',
+      photoURL: savedPhoto || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
+    };
+  });
 
   // Authentication controllers
   const handleSignIn = async () => {
@@ -83,6 +95,26 @@ export default function App() {
       } catch (error) {
         handleFirestoreError(error, OperationType.WRITE, `users/${userId}`);
       }
+    }
+  };
+
+  const handleSaveProfile = async (updatedProfile: { displayName: string; photoURL: string }) => {
+    setProfile(updatedProfile);
+    if (auth.currentUser) {
+      const userId = auth.currentUser.uid;
+      try {
+        const userRef = doc(db, 'users', userId);
+        await setDoc(userRef, { 
+          displayName: updatedProfile.displayName, 
+          photoURL: updatedProfile.photoURL,
+          updatedAt: new Date().toISOString() 
+        }, { merge: true });
+      } catch (error) {
+        handleFirestoreError(error, OperationType.WRITE, `users/${userId}`);
+      }
+    } else {
+      localStorage.setItem('guest_displayName', updatedProfile.displayName);
+      localStorage.setItem('guest_photoURL', updatedProfile.photoURL);
     }
   };
 
@@ -153,6 +185,22 @@ export default function App() {
             if (data.selectedCurrencyCode) {
               setSelectedCurrencyCode(data.selectedCurrencyCode);
             }
+            if (data.displayName || data.photoURL) {
+              setProfile({
+                displayName: data.displayName || fbUser.displayName || 'Google User',
+                photoURL: data.photoURL || fbUser.photoURL || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
+              });
+            } else {
+              setProfile({
+                displayName: fbUser.displayName || 'Google User',
+                photoURL: fbUser.photoURL || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
+              });
+            }
+          } else {
+            setProfile({
+              displayName: fbUser.displayName || 'Google User',
+              photoURL: fbUser.photoURL || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
+            });
           }
         }, (error) => {
           handleFirestoreError(error, OperationType.GET, `users/${userId}`);
@@ -226,6 +274,9 @@ export default function App() {
         setGoals(INITIAL_GOALS);
         setBills(INITIAL_BILLS);
         setSelectedCurrencyCode('PKR');
+        const savedName = localStorage.getItem('guest_displayName') || 'Guest User';
+        const savedPhoto = localStorage.getItem('guest_photoURL') || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80';
+        setProfile({ displayName: savedName, photoURL: savedPhoto });
       }
     });
 
@@ -240,6 +291,7 @@ export default function App() {
   const [isLinkAccOpen, setIsLinkAccOpen] = useState(false);
   const [isEditBudgetOpen, setIsEditBudgetOpen] = useState(false);
   const [isAdvisoryOpen, setIsAdvisoryOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // Global State Modifiers
   const handleAddTransaction = async (newTx: Transaction) => {
@@ -649,6 +701,15 @@ export default function App() {
             <Goal className="w-5 h-5 shrink-0" />
             <span className="font-sans">Accounts &amp; Goals</span>
           </button>
+
+          <button
+            type="button"
+            onClick={() => setIsSettingsOpen(true)}
+            className="w-full flex items-center gap-3 px-4 py-3 font-semibold text-xs rounded-xl transition-all duration-150 cursor-pointer text-on-surface-variant hover:bg-surface-container-low hover:text-primary"
+          >
+            <Settings className="w-5 h-5 shrink-0" />
+            <span className="font-sans">Settings &amp; Profile</span>
+          </button>
         </nav>
 
         {/* Global actions at bottom */}
@@ -666,15 +727,19 @@ export default function App() {
           <div>
             {currentUser ? (
               <div className="bg-surface-container-low border border-outline-variant/50 rounded-xl p-3 flex flex-col gap-2">
-                <div className="flex items-center gap-2.5">
+                <div 
+                  onClick={() => setIsSettingsOpen(true)}
+                  className="flex items-center gap-2.5 cursor-pointer hover:opacity-90 group"
+                  title="Click to edit profile"
+                >
                   <img
-                    src={currentUser.photoURL || "https://lh3.googleusercontent.com/aida-public/AB6AXuAJyQZ2Er5Ufqz9K7ClQekPOkYEfEL1Pkxu71cGPTkQwghsIC2nV3Ok-Xn9c08y9JOeIJPN5AYoPDVkHTrJdqpBk365Vt5mTlNWEiC3vetmY_AL3oDj_xqWiKTWl6B89LhDUWQlr3q8D1MI0rLZAMzzCYrAsFWn6QhS3-iPxtTLsPWTdyJrrwNNk0R5e2iCscE1enkj7Lcndt-L9Z8g-5f-8TrwdSvV-priG_BIvfc2JG3Qbig5U7MgvzpUhGLChx-yheYw0-2TlJ0"}
-                    alt={currentUser.displayName || "Google User"}
-                    className="w-8 h-8 rounded-full border border-primary/20 bg-surface-container object-cover"
+                    src={profile.photoURL}
+                    alt={profile.displayName}
+                    className="w-8 h-8 rounded-full border border-primary/20 bg-surface-container object-cover group-hover:border-primary transition-colors"
                   />
                   <div className="min-w-0 flex-1">
-                    <p className="text-xs font-bold text-primary truncate leading-tight">
-                      {currentUser.displayName || "Google User"}
+                    <p className="text-xs font-bold text-primary truncate leading-tight flex items-center gap-1 group-hover:text-primary-container">
+                      {profile.displayName}
                     </p>
                     <p className="text-[10px] text-on-surface-variant/80 truncate font-mono">
                       Cloud Synced
@@ -691,7 +756,17 @@ export default function App() {
               </div>
             ) : (
               <div className="bg-primary/5 hover:bg-primary/[0.08] border border-primary/15 rounded-xl p-3 flex flex-col gap-2 transition-all">
-                <p className="text-[10px] font-medium text-primary/80 leading-snug">
+                <div onClick={() => setIsSettingsOpen(true)} className="flex items-center gap-2 cursor-pointer hover:opacity-90 group" title="Click to configure settings">
+                  <img
+                    src={profile.photoURL}
+                    alt={profile.displayName}
+                    className="w-6 h-6 rounded-lg border border-primary/10 object-cover"
+                  />
+                  <p className="text-[11px] font-bold text-primary truncate leading-tight flex-1">
+                    {profile.displayName} (Guest)
+                  </p>
+                </div>
+                <p className="text-[9px] font-medium text-primary/80 leading-snug">
                   Save your financial logs to secure cloud servers automatically.
                 </p>
                 <button
@@ -775,35 +850,45 @@ export default function App() {
               <HelpCircle className="w-5 h-5 text-on-surface-variant" />
             </button>
 
+            {/* Quick Settings Shortcut */}
+            <button
+              type="button"
+              onClick={() => setIsSettingsOpen(true)}
+              className="p-2 text-on-surface-variant hover:bg-surface-container-low rounded-full transition-colors cursor-pointer"
+              title="Settings &amp; Profile"
+            >
+              <Settings className="w-5 h-5 text-on-surface-variant" />
+            </button>
+
             {/* Real user or Sign In status on mobile toolbar */}
             {currentUser ? (
               <div className="flex items-center gap-2">
                 <span className="hidden leading-none text-right sm:block">
                   <p className="text-[10px] font-bold text-primary truncate leading-tight max-w-[80px]">
-                    {currentUser.displayName || "Google User"}
+                    {profile.displayName}
                   </p>
                   <p className="text-[8px] text-emerald-600 font-bold tracking-wider uppercase font-mono">Synced</p>
                 </span>
                 <div 
-                  onClick={handleSignOut}
-                  title="Click to Sign Out"
-                  className="h-8 w-8 rounded-full overflow-hidden border border-primary/30 bg-surface-container cursor-pointer hover:border-error transition-colors object-cover"
+                  onClick={() => setIsSettingsOpen(true)}
+                  title="App Settings &amp; Profile"
+                  className="h-8 w-8 rounded-full overflow-hidden border border-primary/30 bg-surface-container cursor-pointer hover:border-primary transition-colors object-cover"
                 >
                   <img 
                     alt="User Profile" 
                     className="w-full h-full object-cover select-none"
-                    src={currentUser.photoURL || "https://lh3.googleusercontent.com/aida-public/AB6AXuAJyQZ2Er5Ufqz9K7ClQekPOkYEfEL1Pkxu71cGPTkQwghsIC2nV3Ok-Xn9c08y9JOeIJPN5AYoPDVkHTrJdqpBk365Vt5mTlNWEiC3vetmY_AL3oDj_xqWiKTWl6B89LhDUWQlr3q8D1MI0rLZAMzzCYrAsFWn6QhS3-iPxtTLsPWTdyJrrwNNk0R5e2iCscE1enkj7Lcndt-L9Z8g-5f-8TrwdSvV-priG_BIvfc2JG3Qbig5U7MgvzpUhGLChx-yheYw0-2TlJ0"}
+                    src={profile.photoURL}
                   />
                 </div>
               </div>
             ) : (
               <button 
                 type="button"
-                onClick={handleSignIn}
+                onClick={() => setIsSettingsOpen(true)}
                 className="bg-primary text-white text-[10px] font-black px-2.5 py-1.5 rounded-full flex items-center gap-1.5 hover:opacity-90 transition-all shadow-sm cursor-pointer border border-primary/10"
-                title="Sign In with Google"
+                title="App Settings &amp; Profile"
               >
-                <span>🔑 Sign In</span>
+                <span>⚙️ Settings</span>
               </button>
             )}
           </div>
@@ -990,6 +1075,21 @@ export default function App() {
             budgets={budgets}
             goals={goals}
             selectedCurrency={selectedCurrency}
+          />
+        )}
+
+        {/* Global App Profile / Preferences Settings Modal */}
+        {isSettingsOpen && (
+          <SettingsModal
+            isOpen={isSettingsOpen}
+            onClose={() => setIsSettingsOpen(false)}
+            currentUser={currentUser}
+            profile={profile}
+            selectedCurrencyCode={selectedCurrencyCode}
+            onSaveProfile={handleSaveProfile}
+            onCurrencyChange={handleCurrencyCodeChange}
+            onSignOut={handleSignOut}
+            onSignIn={handleSignIn}
           />
         )}
 
