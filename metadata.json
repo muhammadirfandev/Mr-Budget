@@ -1,5 +1,5 @@
 {
-  "name": "MR Budget",
+  "name": "Mr Budget",
   "description": "A highly polished, precision financial control suite with interactive ledgers, budget planner, and accounts tracking.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

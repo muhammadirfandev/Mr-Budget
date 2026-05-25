@@ -222,7 +222,7 @@ export default function App() {
         
         {/* Logo and Brand Title */}
         <div className="mb-6 px-2">
-          <h1 className="text-xl font-bold text-primary tracking-tight">MR Budget</h1>
+          <h1 className="text-xl font-bold text-primary tracking-tight">Mr Budget</h1>
           <p className="text-[10px] font-bold text-on-surface-variant tracking-widest uppercase mt-0.5 opacity-75">
             Financial Control
           </p>

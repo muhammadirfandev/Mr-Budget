@@ -166,7 +166,7 @@ export default function LinkAccountModal({ isOpen, onClose, onLink, selectedCurr
             <Wallet className="w-5 h-5 text-primary shrink-0" />
             <div>
               <p className="font-semibold text-primary">Secure End-to-End Handshake</p>
-              <p className="mt-0.5">MR Budget uses read-only API sync protocols. We will never store your credential logins or have access to initiate transfers.</p>
+              <p className="mt-0.5">Mr Budget uses read-only API sync protocols. We will never store your credential logins or have access to initiate transfers.</p>
             </div>
           </div>
 
