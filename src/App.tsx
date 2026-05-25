@@ -44,7 +44,7 @@ import { doc, setDoc, updateDoc, collection, onSnapshot, writeBatch, getDocFromS
 export default function App() {
   // Global Database State
   const [selectedCurrencyCode, setSelectedCurrencyCode] = useState<CurrencyCode>('PKR');
-  const selectedCurrency = CURRENCIES[selectedCurrencyCode];
+  const selectedCurrency = CURRENCIES[selectedCurrencyCode] || CURRENCIES['PKR'];
 
   const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
   const [accounts, setAccounts] = useState<LinkedAccount[]>(INITIAL_ACCOUNTS);
