@@ -1,0 +1,49 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", system-ui, sans-serif;
+  
+  --color-primary: #041627;
+  --color-primary-container: #1a2b3c;
+  --color-primary-fixed: #d2e4fb;
+  --color-primary-fixed-dim: #b7c8de;
+  --color-on-primary-container: #8192a7;
+  
+  --color-secondary: #006d37;
+  --color-secondary-container: #6bfe9c;
+  --color-on-secondary-container: #00743a;
+  
+  --color-error: #ba1a1a;
+  --color-error-container: #ffdad6;
+  --color-on-error-container: #93000a;
+  
+  --color-on-surface: #0b1c30;
+  --color-on-surface-variant: #44474c;
+  
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #eff4ff;
+  --color-surface-container: #e5eeff;
+  --color-surface-container-high: #dce9ff;
+  --color-surface-container-highest: #d3e4fe;
+  
+  --color-outline: #74777d;
+  --color-outline-variant: #c4c6cd;
+  
+  --color-background: #f8f9ff;
+  --color-surface-dim: #cbdbf5;
+  --color-surface-bright: #f8f9ff;
+}
+
+@layer base {
+  body {
+    background-color: var(--color-background);
+    color: var(--color-on-surface);
+    font-family: var(--font-sans);
+  }
+  
+  /* Standard input reset style to fit cleanly in precision design */
+  input, select, textarea {
+    outline: none;
+  }
+}
